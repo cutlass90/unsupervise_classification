@@ -15,7 +15,10 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument(
                     '--z_dim',  type=int,
-                        default=2, help='latent code size')
+                        default=12, help='latent code size')
+parser.add_argument(
+                    '--n_clusters',  type=int,
+                        default=10, help='number of clusters')
 parser.add_argument(
                     '--batch_size',  type=int,
                         default=64, help='batch size')
@@ -32,7 +35,9 @@ parser.set_defaults(restore=False)
 
 args = parser.parse_args()
 
-model = VAE(input_dim, args.z_dim)
+model = VAE(input_dim=input_dim,
+    n_clusters=args.n_clusters,
+    z_dim = args.z_dim)
 if args.restore:
     model.load_model(save_path)
 
@@ -42,3 +47,4 @@ for e in range(1, args.num_epochs+1):
 	model.predict(mnist)
 	model.save_model(save_path)
 
+os.system('CUDA_VISIBLE_DEVICES=1 python3 plot.py')

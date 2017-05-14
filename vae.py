@@ -7,10 +7,13 @@ from tensorflow.contrib import slim
 class VAE():
     """A class representing Variational Autoencoder"""
 
-    def __init__(self, input_dim, z_dim, sampling=True, scope='VAE'):
+    def __init__(self, input_dim, n_clusters, z_dim, sampling=True, scope='VAE'):
+        # must z_dim > n_clusters
+        assert z_dim>n_clusters, 'z_dim must be greater than n_clusters'
 
         self.input_dim = input_dim
         self.z_dim = z_dim
+        self.n_clusters = n_clusters
         self.activation = tf.nn.relu
         self.sampling = sampling
         self.scope = scope
@@ -30,12 +33,13 @@ class VAE():
         print('Create_graph')
         self.x, self. learning_rate, self.is_training =  self._input_graph()
 
-        self.z, self.z_mu, self.z_log_sigma = self.encoder(self.x, sampling=self.sampling)
-        tf.summary.histogram('Z hist', self.z)
+        self.z, self.z_mu, self.z_log_sigma, self.clusters = self.encoder(self.x,
+            sampling=self.sampling)
+
         self.logits, self.x_ = self.decoder(self.z)
 
         self.loss = self.create_cost_graph(logits=self.logits, original=self.x,
-            z_mu=self.z_mu, z_log_sigma=self.z_log_sigma)
+            z_mu=self.z_mu, z_log_sigma=self.z_log_sigma, clusters=self.clusters)
 
         self.train_step = tf.train.AdamOptimizer(
                     learning_rate=self.learning_rate).minimize(self.loss)
@@ -82,18 +86,21 @@ class VAE():
                 net = slim.flatten(net)
                 net = slim.fully_connected(
                                             net,
-                                            2 * self.z_dim,
+                                            2 * self.z_dim-self.n_clusters,
                                             activation_fn=None,
                                             weights_regularizer=regularizer)
-                #split the layer to mu and sigma
-                z_mu, z_log_sigma = tf.split(net, 2, 1)
+                #split the layer to mu, sigma and clusters
+                clusters = tf.nn.softmax(net[:, :self.n_clusters])
+
+                z_mu, z_log_sigma = tf.split(net[:, self.n_clusters:], 2, 1)
+
 
                 if sampling:
                     z = self.GaussianSample(z_mu, tf.exp(z_log_sigma))
                 else:
                     z = z_mu
 
-        return z, z_mu, z_log_sigma
+        return tf.concat([clusters, z], 1), z_mu, z_log_sigma, clusters
 
     # --------------------------------------------------------------------------
     def decoder(self, z, reuse=False):
@@ -138,17 +145,22 @@ class VAE():
         return logits, tf.nn.sigmoid(logits)
 
     # --------------------------------------------------------------------------
-    def create_cost_graph(self, logits, original, z_mu, z_log_sigma):
+    def create_cost_graph(self, logits, original, z_mu, z_log_sigma, clusters):
         print('\tcreate_cost_graph')
         self.ce_loss = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(
           logits=logits, labels=original), 1)
         self.kl_loss = tf.reduce_sum(self.KL(z_mu, tf.exp(z_log_sigma)), 1)
         self.l2_loss = tf.add_n(tf.losses.get_regularization_losses())
+        self.entropy_loss = 5*self.entropy(clusters, 1)
+
+        tf.summary.histogram('z_mu', z_mu)
+        tf.summary.histogram('clusters', clusters)
 
         tf.summary.scalar('Cross entropy loss', tf.reduce_mean(self.ce_loss))
         tf.summary.scalar('L2 loss', self.l2_loss)
         tf.summary.scalar('KL loss', tf.reduce_mean(self.kl_loss))
-        return tf.reduce_mean(self.ce_loss + self.kl_loss, 0) + self.l2_loss
+        tf.summary.scalar('entropy loss', tf.reduce_mean(self.entropy_loss))
+        return tf.reduce_mean(self.ce_loss + self.kl_loss + self.entropy_loss, 0) + self.l2_loss
 
 
     # --------------------------------------------------------------------------
@@ -181,8 +193,10 @@ class VAE():
         feed_dict = {
                      self.x: x,
                      self.is_training: False}
-        ce, kl = self.sess.run([self.ce_loss, self.kl_loss], feed_dict=feed_dict)        
-        print('Cross-entropy loss: {}, KL loss: {}'.format(ce.mean(), kl.mean()))
+        ce, kl, en = self.sess.run([self.ce_loss, self.kl_loss, self.entropy_loss],
+            feed_dict=feed_dict)        
+        print('Cross-entropy loss: {}, KL loss: {}, entropy loss: {}'.format(ce.mean(),
+            kl.mean(), en.mean()))
 
     # --------------------------------------------------------------------------
     def get_z(self, x):
@@ -208,6 +222,13 @@ class VAE():
         self.saver.restore(self.sess, path)
 
     # --------------------------------------------------------------------------
+    def entropy(self, z, axis):
+        z = tf.clip_by_value(z, 1e-5, 1-1e-5)
+        H = -tf.reduce_sum(z * tf.log(z), axis=axis)
+        return H
+
+
+    # --------------------------------------------------------------------------
     def KL(self, mu, sigma, mu_prior=0.0, sigma_prior=1.0, eps=1e-7):
         return -(1/2)*(1 + tf.log(eps + (sigma/sigma_prior)**2) \
             - (sigma**2 + (mu - mu_prior)**2)/sigma_prior**2)
@@ -215,5 +236,11 @@ class VAE():
     # --------------------------------------------------------------------------
     def GaussianSample(self, mu, sigma):
         return mu + sigma*tf.random_normal(tf.shape(mu), dtype=tf.float32)
+
+################################################################################
+if __name__ == '__main__':
+    VAE(input_dim=28*28,
+        n_clusters=10,
+        z_dim=12)
 
 

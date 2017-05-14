@@ -10,10 +10,11 @@ mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
 from vae import VAE
 
 input_dim = 28*28
-z_dim = 2
+z_dim = 12
+n_clusters = 10
 load_path = 'models/mnist_dnn/m'
 
-model = VAE(input_dim, z_dim, sampling=True)
+model = VAE(input_dim=input_dim, n_clusters=n_clusters, z_dim=z_dim, sampling=True)
 model.load_model(load_path)
 
 def to_image(x):
@@ -77,8 +78,31 @@ def plot_latent_space():
     plt.close()
     print('Latent space saved.')
 
-    
+
+def plot_clusters(n_clusters, z_dim):
+
+    fig = plt.figure(figsize=(7, 7))
+    for i in range(15):
+        for c in range(n_clusters):
+            im_n = i*n_clusters+c+1
+            ax = fig.add_subplot(n_clusters, 15, im_n)
+            z = np.ones([1,z_dim]).astype(np.float32)
+            z[0, n_clusters:] = np.random.normal(size=[z_dim-n_clusters]).astype(np.float32)
+            z[0, c-1] = 1.
+            x = model.reconstruct_from_z(z)
+            ax.imshow(to_image(x), cmap='gray', aspect='auto')
+            ax.set_axis_off()
+
+    #remove spacings between subplots
+    fig.subplots_adjust(hspace=0, wspace=0, left=0, bottom=0, right=1, top=1)
+    os.makedirs('pics', exist_ok=True)
+    fig.savefig('pics/plot_clusters.png')
+    plt.close()
+    print('plot_clusters saved.')
+
+
 if __name__ == '__main__':
 
-    sample()
-    plot_latent_space()
+    # sample()
+    # plot_latent_space()
+    plot_clusters(n_clusters=n_clusters, z_dim=z_dim)
