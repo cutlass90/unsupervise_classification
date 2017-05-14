@@ -7,15 +7,6 @@ import matplotlib.pyplot as plt
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
 
-from vae import VAE
-
-input_dim = 28*28
-z_dim = 12
-n_clusters = 10
-load_path = 'models/mnist_dnn/m'
-
-model = VAE(input_dim=input_dim, n_clusters=n_clusters, z_dim=z_dim, sampling=True)
-model.load_model(load_path)
 
 def to_image(x):
     return x.reshape(28, 28)
@@ -79,7 +70,7 @@ def plot_latent_space():
     print('Latent space saved.')
 
 
-def plot_clusters(n_clusters, z_dim):
+def plot_clusters(model, n_clusters, z_dim):
 
     fig = plt.figure(figsize=(7, 7))
     for i in range(15):
@@ -102,7 +93,8 @@ def plot_clusters(n_clusters, z_dim):
 
 
 if __name__ == '__main__':
+    pass
 
     # sample()
     # plot_latent_space()
-    plot_clusters(n_clusters=n_clusters, z_dim=z_dim)
+    
