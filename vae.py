@@ -241,7 +241,7 @@ class VAE():
     # --------------------------------------------------------------------------
     def load_model(self, path):
         self.saver.restore(self.sess, path)
-        print('Model saved!')
+        print('Model loaded!')
 
     # --------------------------------------------------------------------------
     def entropy(self, z, axis):

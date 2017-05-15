@@ -70,24 +70,59 @@ def plot_latent_space():
     plt.close()
     print('Latent space saved.')
 
+def plot_clusters_latent_space(model, n_clusters):
+    for cl in range(n_clusters):
+        nx = ny = 20
+        x_values = np.linspace(-3, 3, nx)
+        y_values = np.linspace(-3, 3, ny)
+
+        canvas = np.empty((28*ny, 28*nx))
+        z_arr = np.empty([0, n_clusters+2], dtype=np.float32)
+        for i, yi in enumerate(x_values):
+            for j, xi in enumerate(y_values):
+                z = np.zeros([1, n_clusters+2])
+                z[0, n_clusters:] = [xi, yi]
+                z[0, cl] = 0.99
+                z = z.astype(np.float32)
+                z_arr = np.vstack([z_arr,z])
+        x_mean = model.reconstruct_from_z(z_arr)
+        for i, yi in enumerate(x_values):
+            for j, xi in enumerate(y_values):
+                canvas[(nx-i-1)*28:(nx-i)*28, j*28:(j+1)*28] = to_image(x_mean[nx*i+j,:])
+
+        fig = plt.figure(figsize=(7, 7))        
+        Xi, Yi = np.meshgrid(x_values, y_values)
+        ax = fig.add_subplot(111)
+        ax.imshow(canvas,  origin='upper', cmap='gray', interpolation='bicubic')
+        ax.set_axis_off()
+        os.makedirs('pics', exist_ok=True)
+        fig.savefig('pics/cluster_{}_latent_space.png'.format(cl+1))
+        print('Latent space of cluster {} was saved.'.format(cl+1))
+        plt.close()
+
 
 def plot_clusters(model, n_clusters, z_dim):
+    n_exs = 15
 
-    fig = plt.figure(figsize=(7, 7))
-    for i in range(15):
-        
+    z_arr = np.empty([0, n_clusters+2], dtype=np.float32)
+    for i in range(n_exs):
         z_mu = np.random.normal(size=[z_dim-n_clusters]).astype(np.float32)
         for c in range(n_clusters):
             im_n = i*n_clusters+c+1
             z = np.zeros([1,z_dim]).astype(np.float32)
             z[0, n_clusters:] = z_mu
-            ax = fig.add_subplot(15, n_clusters, im_n)
-            z[0, c] = 0.98
-            print(z)
-            x = model.reconstruct_from_z(z)
-            ax.imshow(to_image(x), cmap='gray', aspect='auto')
-            ax.set_axis_off()
+            z[0, c] = 0.99
+            z_arr = np.vstack([z_arr,z])
+  
+    x = model.reconstruct_from_z(z_arr)
 
+    fig = plt.figure(figsize=(7, 7))
+    for i in range(n_exs):
+        for c in range(n_clusters):
+            im_n = i*n_clusters+c+1
+            ax = fig.add_subplot(n_exs, n_clusters, im_n)
+            ax.imshow(to_image(x[im_n-1,:]), cmap='gray', aspect='auto')
+            ax.set_axis_off()
     #remove spacings between subplots
     fig.subplots_adjust(hspace=0, wspace=0, left=0, bottom=0, right=1, top=1)
     os.makedirs('pics', exist_ok=True)
@@ -106,6 +141,23 @@ def view_z(model, n_samles=10):
     plt.savefig('pics/z_code.png')
     plt.close()
     print('z code saved')
+
+def calc_acc(model, label_map, n_clusters):
+    # label_map is a dict where key is  number of cluster, starting from 1
+        # and value is true label
+    mnist.one_hot = False
+    batch_size = 64
+    acc_list = []
+    for i in range(data_loader.train.num_examples//batch_size):
+        x, y = mnist.train.next_batch(batch_size)
+        clusters = model.get_z(x)[:n_clusters]
+        y_pred = np.argmax(clusters)+1
+        y_pred = np.array([label_map[cl] for cl in y_pred])
+        acc_list.append((y==y_pred).sum()*batch_size)
+    print('Accuracy = ', np.array(acc_list).mean())
+
+    
+
 
 
 

@@ -17,6 +17,8 @@ model = VAE(input_dim=PARAM['input_dim'],
 if PARAM['restore']:
     model.load_model(save_path)
 
+"""
+# train
 for e in range(1, PARAM['n_epochs']+1):
     print('\n', '-'*30, 'Epoch {}'.format(e), '-'*30, '\n')
     model.train(batch_size=PARAM['batch_size'],
@@ -29,8 +31,9 @@ for e in range(1, PARAM['n_epochs']+1):
         entropy_weight=PARAM['entropy_weight'],
         m_class_weight=PARAM['m_class_weight'])
     model.save_model(save_path)
-
+"""
 
 tools.view_z(model)
+tools.plot_clusters_latent_space(model=model, n_clusters=PARAM['n_clusters'])
 tools.plot_clusters(model=model, n_clusters=PARAM['n_clusters'],
     z_dim=PARAM['z_dim'])

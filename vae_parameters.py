@@ -9,6 +9,6 @@ parameters = {
     'entropy_weight':50,
     'm_class_weight':50,
     'learn_rate':0.001,
-    'restore':False,
+    'restore':True,
     'n_epochs':20
 }
