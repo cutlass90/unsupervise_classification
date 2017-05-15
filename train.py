@@ -19,11 +19,15 @@ if PARAM['restore']:
 
 for e in range(1, PARAM['n_epochs']+1):
 	print('\n', '-'*30, 'Epoch {}'.format(e), '-'*30, '\n')
-	model.train(PARAM['batch_size'], PARAM['learn_rate'], mnist)
+	model.train(batch_size=PARAM['batch_size'],
+        learning_rate=PARAM['learn_rate'],
+        data_loader=mnist,
+        KL_weight=PARAM['KL_weight'],
+        entropy_weight=PARAM['entropy_weight'])
 	model.predict(mnist)
 	model.save_model(save_path)
 
-os.system('CUDA_VISIBLE_DEVICES=1 python3 plot.py')
 
+tools.view_z(model)
 tools.plot_clusters(model=model, n_clusters=PARAM['n_clusters'],
     z_dim=PARAM['z_dim'])

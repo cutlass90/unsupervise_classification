@@ -4,6 +4,8 @@ import os
 import tensorflow as tf
 from tensorflow.contrib import slim
 
+import vae_tools as tools
+
 class VAE():
     """A class representing Variational Autoencoder"""
 
@@ -31,10 +33,15 @@ class VAE():
     # --------------------------------------------------------------------------
     def _create_graph(self):
         print('Create_graph')
-        self.x, self. learning_rate, self.is_training =  self._input_graph()
+        self.x,\
+        self.learning_rate,\
+        self.is_training,\
+        self.KL_weight,\
+        self.entropy_weight = self._input_graph()
 
         self.z, self.z_mu, self.z_log_sigma, self.clusters = self.encoder(self.x,
             sampling=self.sampling)
+        print(self.z, self.z_mu, self.z_log_sigma, self.clusters)
 
         self.logits, self.x_ = self.decoder(self.z)
 
@@ -52,8 +59,10 @@ class VAE():
         x = tf.placeholder(tf.float32, shape=[None, self.input_dim])
         learning_rate = tf.placeholder(tf.float32, ())
         is_training = tf.placeholder(tf.bool, ())
+        KL_weight = tf.placeholder(tf.float32, name='KL_weight')
+        entropy_weight = tf.placeholder(tf.float32, name='entropy_weight')
 
-        return x, learning_rate, is_training
+        return x, learning_rate, is_training, KL_weight, entropy_weight
 
     # --------------------------------------------------------------------------
     def encoder(self, x, sampling=True, reuse=False):
@@ -149,19 +158,22 @@ class VAE():
         print('\tcreate_cost_graph')
         self.ce_loss = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(
           logits=logits, labels=original), 1)
-        self.kl_loss = tf.reduce_sum(self.KL(z_mu, tf.exp(z_log_sigma)), 1)
+        self.kl_loss = 1*tf.reduce_sum(self.KL(z_mu, tf.exp(z_log_sigma)), 1)
         self.l2_loss = tf.add_n(tf.losses.get_regularization_losses())
-        self.entropy_loss = 5*self.entropy(clusters, 1)
+        self.entropy_loss = 50*self.entropy(clusters, 1) #b
+        self.multiclass_loss = 50*self.entropy(tf.reduce_mean(clusters,0),0)
 
         tf.summary.histogram('z_mu', z_mu)
         tf.summary.histogram('clusters', clusters)
+        tf.summary.histogram('multiclass', tf.reduce_mean(clusters,0))
 
         tf.summary.scalar('Cross entropy loss', tf.reduce_mean(self.ce_loss))
         tf.summary.scalar('L2 loss', self.l2_loss)
         tf.summary.scalar('KL loss', tf.reduce_mean(self.kl_loss))
         tf.summary.scalar('entropy loss', tf.reduce_mean(self.entropy_loss))
-        return tf.reduce_mean(self.ce_loss + self.kl_loss + self.entropy_loss, 0) + self.l2_loss
-
+        tf.summary.scalar('multiclass loss', self.multiclass_loss)
+        return tf.reduce_mean(self.ce_loss + self.kl_loss + self.entropy_loss, 0)\
+            + self.l2_loss - self.multiclass_loss
 
     # --------------------------------------------------------------------------
     @property
@@ -173,14 +185,17 @@ class VAE():
         return self._sess
 
     # --------------------------------------------------------------------------
-    def train(self, batch_size, learning_rate, data_loader):
+    def train(self, batch_size, learning_rate, data_loader, KL_weight,
+        entropy_weight):
 
         for i in range(data_loader.train.num_examples//batch_size):
             x, _ = data_loader.train.next_batch(batch_size)
             feed_dict = {
                          self.x: x,
                          self.learning_rate: learning_rate,
-                         self.is_training: True}
+                         self.is_training: True,
+                         self.KL_weight: KL_weight,
+                         self.entropy_weight: entropy_weight}
             _, summary = self.sess.run([self.train_step, self.merged],
                 feed_dict=feed_dict)
             self.train_writer.add_summary(summary, i)
@@ -189,14 +204,14 @@ class VAE():
     # --------------------------------------------------------------------------
     def predict(self, data_loader):
 
-        x = random.sample(list(data_loader.validation.images), 100)
+        x = random.sample(list(data_loader.validation.images), 64)
         feed_dict = {
                      self.x: x,
                      self.is_training: False}
-        ce, kl, en = self.sess.run([self.ce_loss, self.kl_loss, self.entropy_loss],
-            feed_dict=feed_dict)        
-        print('Cross-entropy loss: {}, KL loss: {}, entropy loss: {}'.format(ce.mean(),
-            kl.mean(), en.mean()))
+        ce, kl, en, mc = self.sess.run([self.ce_loss, self.kl_loss,self.entropy_loss,
+            self.multiclass_loss], feed_dict=feed_dict)        
+        print('Cross-entropy loss: {}, KL loss: {}, entropy loss: {},\
+            multiclass loss: {}'.format(ce.mean(), kl.mean(), en.mean(), mc))
 
     # --------------------------------------------------------------------------
     def get_z(self, x):
@@ -220,6 +235,7 @@ class VAE():
     # --------------------------------------------------------------------------
     def load_model(self, path):
         self.saver.restore(self.sess, path)
+        print('Model saved!')
 
     # --------------------------------------------------------------------------
     def entropy(self, z, axis):
@@ -227,6 +243,11 @@ class VAE():
         H = -tf.reduce_sum(z * tf.log(z), axis=axis)
         return H
 
+    # --------------------------------------------------------------------------
+    def log10(self, x):
+        numerator = tf.log(x)
+        denominator = tf.log(tf.constant(10, dtype=numerator.dtype))
+        return numerator / denominator
 
     # --------------------------------------------------------------------------
     def KL(self, mu, sigma, mu_prior=0.0, sigma_prior=1.0, eps=1e-7):
@@ -239,8 +260,11 @@ class VAE():
 
 ################################################################################
 if __name__ == '__main__':
-    VAE(input_dim=28*28,
+    vae = VAE(input_dim=28*28,
         n_clusters=10,
         z_dim=12)
+
+    a = tf.ones([10])
+    print(vae.sess.run(a))
 
 

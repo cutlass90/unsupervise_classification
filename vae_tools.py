@@ -1,7 +1,8 @@
 import random
 import os
 
-import numpy as np 
+import numpy as np
+import tensorflow as tf
 import matplotlib.pyplot as plt
 
 from tensorflow.examples.tutorials.mnist import input_data
@@ -74,12 +75,15 @@ def plot_clusters(model, n_clusters, z_dim):
 
     fig = plt.figure(figsize=(7, 7))
     for i in range(15):
+        
+        z_mu = np.random.normal(size=[z_dim-n_clusters]).astype(np.float32)
         for c in range(n_clusters):
             im_n = i*n_clusters+c+1
-            ax = fig.add_subplot(n_clusters, 15, im_n)
-            z = np.ones([1,z_dim]).astype(np.float32)
-            z[0, n_clusters:] = np.random.normal(size=[z_dim-n_clusters]).astype(np.float32)
-            z[0, c-1] = 1.
+            z = np.zeros([1,z_dim]).astype(np.float32)
+            z[0, n_clusters:] = z_mu
+            ax = fig.add_subplot(15, n_clusters, im_n)
+            z[0, c] = 0.98
+            print(z)
             x = model.reconstruct_from_z(z)
             ax.imshow(to_image(x), cmap='gray', aspect='auto')
             ax.set_axis_off()
@@ -90,6 +94,20 @@ def plot_clusters(model, n_clusters, z_dim):
     fig.savefig('pics/plot_clusters.png')
     plt.close()
     print('plot_clusters saved.')
+
+def view_z(model, n_samles=10):
+    x, y = mnist.train.next_batch(n_samles)
+    z = model.get_z(x)
+    plt.figure(figsize=[15,15])
+    for i in range(n_samles):
+        plt.subplot(n_samles, 1, i+1)
+        plt.plot(z[i], label=str(y[i]))
+        plt.legend()
+    plt.savefig('pics/z_code.png')
+    plt.close()
+    print('z code saved')
+
+
 
 
 if __name__ == '__main__':
