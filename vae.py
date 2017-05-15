@@ -37,7 +37,8 @@ class VAE():
         self.learning_rate,\
         self.is_training,\
         self.KL_weight,\
-        self.entropy_weight = self._input_graph()
+        self.entropy_weight,\
+        self.m_class_weight = self._input_graph()
 
         self.z, self.z_mu, self.z_log_sigma, self.clusters = self.encoder(self.x,
             sampling=self.sampling)
@@ -61,8 +62,9 @@ class VAE():
         is_training = tf.placeholder(tf.bool, ())
         KL_weight = tf.placeholder(tf.float32, name='KL_weight')
         entropy_weight = tf.placeholder(tf.float32, name='entropy_weight')
+        m_class_weight = tf.placeholder(tf.float32, name='m_class_weight')
 
-        return x, learning_rate, is_training, KL_weight, entropy_weight
+        return x, learning_rate, is_training, KL_weight, entropy_weight, m_class_weight
 
     # --------------------------------------------------------------------------
     def encoder(self, x, sampling=True, reuse=False):
@@ -158,10 +160,10 @@ class VAE():
         print('\tcreate_cost_graph')
         self.ce_loss = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(
           logits=logits, labels=original), 1)
-        self.kl_loss = 1*tf.reduce_sum(self.KL(z_mu, tf.exp(z_log_sigma)), 1)
+        self.kl_loss = self.KL_weight*tf.reduce_sum(self.KL(z_mu, tf.exp(z_log_sigma)), 1)
         self.l2_loss = tf.add_n(tf.losses.get_regularization_losses())
-        self.entropy_loss = 50*self.entropy(clusters, 1) #b
-        self.multiclass_loss = 50*self.entropy(tf.reduce_mean(clusters,0),0)
+        self.entropy_loss = self.entropy_weight*self.entropy(clusters, 1) #b
+        self.multiclass_loss = self.m_class_weight*self.entropy(tf.reduce_mean(clusters,0),0)
 
         tf.summary.histogram('z_mu', z_mu)
         tf.summary.histogram('clusters', clusters)
@@ -186,7 +188,7 @@ class VAE():
 
     # --------------------------------------------------------------------------
     def train(self, batch_size, learning_rate, data_loader, KL_weight,
-        entropy_weight):
+        entropy_weight, m_class_weight):
 
         for i in range(data_loader.train.num_examples//batch_size):
             x, _ = data_loader.train.next_batch(batch_size)
@@ -195,19 +197,23 @@ class VAE():
                          self.learning_rate: learning_rate,
                          self.is_training: True,
                          self.KL_weight: KL_weight,
-                         self.entropy_weight: entropy_weight}
+                         self.entropy_weight: entropy_weight,
+                         self.m_class_weight: m_class_weight}
             _, summary = self.sess.run([self.train_step, self.merged],
                 feed_dict=feed_dict)
             self.train_writer.add_summary(summary, i)
 
 
     # --------------------------------------------------------------------------
-    def predict(self, data_loader):
+    def predict(self, data_loader, KL_weight, entropy_weight, m_class_weight):
 
         x = random.sample(list(data_loader.validation.images), 64)
         feed_dict = {
                      self.x: x,
-                     self.is_training: False}
+                     self.is_training: False,
+                     self.KL_weight: KL_weight,
+                     self.entropy_weight: entropy_weight,
+                     self.m_class_weight: m_class_weight}
         ce, kl, en, mc = self.sess.run([self.ce_loss, self.kl_loss,self.entropy_loss,
             self.multiclass_loss], feed_dict=feed_dict)        
         print('Cross-entropy loss: {}, KL loss: {}, entropy loss: {},\

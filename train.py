@@ -18,14 +18,17 @@ if PARAM['restore']:
     model.load_model(save_path)
 
 for e in range(1, PARAM['n_epochs']+1):
-	print('\n', '-'*30, 'Epoch {}'.format(e), '-'*30, '\n')
-	model.train(batch_size=PARAM['batch_size'],
+    print('\n', '-'*30, 'Epoch {}'.format(e), '-'*30, '\n')
+    model.train(batch_size=PARAM['batch_size'],
         learning_rate=PARAM['learn_rate'],
         data_loader=mnist,
         KL_weight=PARAM['KL_weight'],
-        entropy_weight=PARAM['entropy_weight'])
-	model.predict(mnist)
-	model.save_model(save_path)
+        entropy_weight=PARAM['entropy_weight'],
+        m_class_weight=PARAM['m_class_weight'])
+    model.predict(data_loader=mnist, KL_weight=PARAM['KL_weight'],
+        entropy_weight=PARAM['entropy_weight'],
+        m_class_weight=PARAM['m_class_weight'])
+    model.save_model(save_path)
 
 
 tools.view_z(model)
