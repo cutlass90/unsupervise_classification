@@ -19,7 +19,7 @@ model = VAE(
 if PARAM['restore']:
     model.load_model(save_path)
 
-
+"""
 # train
 for e in range(1, PARAM['n_epochs']+1):
     print('\n', '-'*30, 'Epoch {}'.format(e), '-'*30, '\n')
@@ -33,7 +33,7 @@ for e in range(1, PARAM['n_epochs']+1):
         entropy_weight=PARAM['entropy_weight'],
         m_class_weight=PARAM['m_class_weight'])
     model.save_model(save_path)
-
+"""
 
 
 tools.view_z(model)

@@ -170,9 +170,12 @@ def get_label_map(model, n_clusters, batch_size):
 
 def map_labels_to_clusters(labels, clusters):
     # label and clusters are matrices with one-hot vectors
+    # return dict where key is  number of cluster, starting from 0
+        # and value is true label
     label_map = {i:identify_label(labels, clusters[:,i])
         for i in range(clusters.shape[1])}
-    assert len(label_map)==clusters.shape[1], 'Can not гnequivocally identify all cluster'
+    ls = [v for v in label_map.values()]
+    assert len(set(ls))==clusters.shape[1], 'Can not unequivocally identify all cluster'
     print('label_map', label_map)
     return label_map
     
