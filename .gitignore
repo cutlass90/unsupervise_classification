@@ -4,4 +4,5 @@ __pycache__
 *sublime-workspace
 summary/
 models/
+MNIST_data/
 predictions/

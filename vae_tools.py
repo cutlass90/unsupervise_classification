@@ -142,13 +142,16 @@ def view_z(model, n_samles=10):
     plt.close()
     print('z code saved')
 
-def calc_acc(model, label_map, n_clusters):
+
+def calc_acc(model, n_clusters):
     # label_map is a dict where key is  number of cluster, starting from 0
         # and value is true label
+    batch_size = 10
+    label_map = get_label_map(model, n_clusters, batch_size)
     mnist = input_data.read_data_sets("MNIST_data/", one_hot=False)
-    batch_size = 64
     acc_list = []
     for i in range(mnist.train.num_examples//batch_size):
+        break
         x, y = mnist.train.next_batch(batch_size)
         clusters = model.get_z(x)[:, :n_clusters]
         y_pred = np.argmax(clusters, axis=1)
@@ -157,6 +160,34 @@ def calc_acc(model, label_map, n_clusters):
         acc_list.append((y==y_pred).sum()/batch_size)
     print('Accuracy = ', np.array(acc_list).mean())
 
+
+def get_label_map(model, n_clusters, batch_size):
+    x, y = mnist.train.next_batch(batch_size)
+    clusters = model.get_z(x)[:, :n_clusters]
+    clusters = (clusters>0.5).astype(float)
+    label_map = map_labels_to_clusters(y, clusters)
+    return label_map
+
+
+def map_labels_to_clusters(labels, clusters):
+    # label and clusters are matrices with one-hot vectors
+    label_map = {i:identify_label(labels, clusters[:,i])
+        for i in range(clusters.shape[1])}
+    assert len(label_map)==clusters.shape[1], 'Can not гnequivocally identify all cluster'
+    print('label_map', label_map)
+    return label_map
+    
+
+def identify_label(labels, cluster):
+    """ return label of specific vector """
+    cluster = np.array(cluster)
+    l = []
+    for i in range(labels.shape[1]):
+        a = np.sum(cluster==labels[:,i])
+        l.append(a)
+    return np.argmax(l,0)
+
+
     
 
 
@@ -164,7 +195,18 @@ def calc_acc(model, label_map, n_clusters):
 
 
 if __name__ == '__main__':
-    pass
+    # testing
+
+    # identify_label
+    labels = np.eye(5)
+    cluster = np.array([0,1,0,0,0])
+    print('labels\n',labels)
+    print('cluster\n', cluster)
+    l = identify_label(labels, cluster)
+    assert l == 1, 'test identify_label not passed'
+    print(l)
+    
+
 
     # sample()
     # plot_latent_space()
