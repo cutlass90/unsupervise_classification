@@ -73,8 +73,8 @@ def plot_latent_space():
 def plot_clusters_latent_space(model, n_clusters):
     for cl in range(n_clusters):
         nx = ny = 20
-        x_values = np.linspace(-3, 3, nx)
-        y_values = np.linspace(-3, 3, ny)
+        x_values = np.linspace(-2, 2, nx)
+        y_values = np.linspace(-2, 2, ny)
 
         canvas = np.empty((28*ny, 28*nx))
         z_arr = np.empty([0, n_clusters+2], dtype=np.float32)
@@ -96,8 +96,8 @@ def plot_clusters_latent_space(model, n_clusters):
         ax.imshow(canvas,  origin='upper', cmap='gray', interpolation='bicubic')
         ax.set_axis_off()
         os.makedirs('pics', exist_ok=True)
-        fig.savefig('pics/cluster_{}_latent_space.png'.format(cl+1))
-        print('Latent space of cluster {} was saved.'.format(cl+1))
+        fig.savefig('pics/cluster_{}_latent_space.png'.format(cl))
+        print('Latent space of cluster {} was saved.'.format(cl))
         plt.close()
 
 
@@ -143,17 +143,18 @@ def view_z(model, n_samles=10):
     print('z code saved')
 
 def calc_acc(model, label_map, n_clusters):
-    # label_map is a dict where key is  number of cluster, starting from 1
+    # label_map is a dict where key is  number of cluster, starting from 0
         # and value is true label
-    mnist.one_hot = False
+    mnist = input_data.read_data_sets("MNIST_data/", one_hot=False)
     batch_size = 64
     acc_list = []
-    for i in range(data_loader.train.num_examples//batch_size):
+    for i in range(mnist.train.num_examples//batch_size):
         x, y = mnist.train.next_batch(batch_size)
-        clusters = model.get_z(x)[:n_clusters]
-        y_pred = np.argmax(clusters)+1
+        clusters = model.get_z(x)[:, :n_clusters]
+        y_pred = np.argmax(clusters, axis=1)
+        # print('y_pred', y_pred)
         y_pred = np.array([label_map[cl] for cl in y_pred])
-        acc_list.append((y==y_pred).sum()*batch_size)
+        acc_list.append((y==y_pred).sum()/batch_size)
     print('Accuracy = ', np.array(acc_list).mean())
 
     

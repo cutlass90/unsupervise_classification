@@ -11,13 +11,15 @@ os.makedirs('models/mnist_dnn', exist_ok=True)
 
 mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
 
-model = VAE(input_dim=PARAM['input_dim'],
+model = VAE(
+    input_dim=PARAM['input_dim'],
     n_clusters=PARAM['n_clusters'],
-    z_dim=PARAM['z_dim'])
+    z_dim=PARAM['z_dim'],
+    sampling=PARAM['sampling'])
 if PARAM['restore']:
     model.load_model(save_path)
 
-"""
+
 # train
 for e in range(1, PARAM['n_epochs']+1):
     print('\n', '-'*30, 'Epoch {}'.format(e), '-'*30, '\n')
@@ -31,9 +33,16 @@ for e in range(1, PARAM['n_epochs']+1):
         entropy_weight=PARAM['entropy_weight'],
         m_class_weight=PARAM['m_class_weight'])
     model.save_model(save_path)
-"""
+
+
 
 tools.view_z(model)
 tools.plot_clusters_latent_space(model=model, n_clusters=PARAM['n_clusters'])
 tools.plot_clusters(model=model, n_clusters=PARAM['n_clusters'],
     z_dim=PARAM['z_dim'])
+
+tools.calc_acc(model=model,
+    label_map={0:6, 1:2, 2:0, 3:1, 4:7, 5:5, 6:9, 7:8, 8:3, 9:4},
+    n_clusters=PARAM['n_clusters'])
+
+
