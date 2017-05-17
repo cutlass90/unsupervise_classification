@@ -146,12 +146,11 @@ def view_z(model, n_samles=10):
 def calc_acc(model, n_clusters):
     # label_map is a dict where key is  number of cluster, starting from 0
         # and value is true label
-    batch_size = 10
+    batch_size = 64
     label_map = get_label_map(model, n_clusters, batch_size)
     mnist = input_data.read_data_sets("MNIST_data/", one_hot=False)
     acc_list = []
     for i in range(mnist.train.num_examples//batch_size):
-        break
         x, y = mnist.train.next_batch(batch_size)
         clusters = model.get_z(x)[:, :n_clusters]
         y_pred = np.argmax(clusters, axis=1)
