@@ -143,11 +143,12 @@ def view_z(model, n_samles=10):
     print('z code saved')
 
 
-def calc_acc(model, n_clusters):
+def calc_acc(model, n_clusters, label_map=None):
     # label_map is a dict where key is  number of cluster, starting from 0
         # and value is true label
     batch_size = 64
-    label_map = get_label_map(model, n_clusters, batch_size)
+    if label_map == None:
+        label_map = get_label_map(model, n_clusters, batch_size)
     mnist = input_data.read_data_sets("MNIST_data/", one_hot=False)
     acc_list = []
     for i in range(mnist.train.num_examples//batch_size):
@@ -175,8 +176,8 @@ def map_labels_to_clusters(labels, clusters):
     label_map = {i:identify_label(labels, clusters[:,i])
         for i in range(clusters.shape[1])}
     ls = [v for v in label_map.values()]
-    assert len(set(ls))==clusters.shape[1], 'Can not unequivocally identify all cluster'
     print('label_map', label_map)
+    assert len(set(ls))==clusters.shape[1], 'Can not unequivocally identify all cluster'
     return label_map
     
 

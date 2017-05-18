@@ -5,11 +5,11 @@ parameters = {
     'batch_size':1024,
     'keep_prob':1,
     'weight_decay':0.00001,
-    'KL_weight':1,
-    'entropy_weight':50,
-    'm_class_weight':50,
-    'learn_rate':0.0001,
+    'KL_weight':10,
+    'entropy_weight':100,
+    'm_class_weight':100,
+    'learn_rate':0.0006,
     'restore':False,
-    'n_epochs':100,
-    'sampling':False
+    'n_epochs':200,
+    'sampling':True
 }

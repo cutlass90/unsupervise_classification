@@ -42,7 +42,7 @@ class VAE():
 
         self.z, self.z_mu, self.z_log_sigma, self.clusters = self.encoder(self.x,
             sampling=self.sampling)
-        print(self.z, self.z_mu, self.z_log_sigma, self.clusters)
+        tf.summary.histogram('z', self.z[:, self.n_clusters:])
 
         self.logits, self.x_ = self.decoder(self.z)
 
@@ -165,7 +165,7 @@ class VAE():
         self.entropy_loss = self.entropy_weight*self.entropy(clusters, 1) #b
         self.multiclass_loss = self.m_class_weight*self.entropy(tf.reduce_mean(clusters,0),0)
 
-        tf.summary.histogram('z_mu', z_mu)
+        
         tf.summary.histogram('clusters', clusters)
         tf.summary.histogram('multiclass', tf.reduce_mean(clusters,0))
 
