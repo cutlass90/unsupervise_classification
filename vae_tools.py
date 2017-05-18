@@ -12,23 +12,31 @@ mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
 def to_image(x):
     return x.reshape(28, 28)
 
-def reconstruct(k=4):
-    original = random.sample(list(mnist.validation.images), k)
-    reconstruction = list(model.reconstruct(original))
+def reconstruct(model, n_clusters, k=3, n_images=10):
+    for img in range(n_images):
+        ff = lambda x: "%.2f" % x
 
-    fig = plt.figure(figsize=(4, k*2))
-    for orig, rec, i in zip(original, reconstruction, range(k)):
-        ax = fig.add_subplot(k, 2, 2*i+1)
-        ax.imshow(to_image(orig), cmap='gray')
-        ax.set_title('original')
-        ax.set_axis_off()
-        ax = fig.add_subplot(k, 2, 2*i+2)
-        ax.imshow(to_image(rec), cmap='gray')
-        ax.set_title('reconstructed')
-        ax.set_axis_off()
-    os.makedirs('pics', exist_ok=True)
-    fig.savefig('pics/reconstruction.png')
-    plt.close()
+        x = random.sample(list(mnist.train.images), k)
+        reconstruction = list(model.reconstruct(x))
+        z = model.get_z(x)
+        z_latent, clusters = z[:, n_clusters:], z[:, :n_clusters]
+        z_latent = np.around(z_latent, 2)
+        y_pred = np.argmax(clusters, axis=1)
+
+
+        fig = plt.figure(figsize=(4, k*2))
+        for orig, rec, i in zip(x, reconstruction, range(k)):
+            ax = fig.add_subplot(k, 2, 2*i+1)
+            ax.imshow(to_image(orig), cmap='gray')
+            ax.set_title('original')
+            ax.set_axis_off()
+            ax = fig.add_subplot(k, 2, 2*i+2)
+            ax.imshow(to_image(rec), cmap='gray')
+            ax.set_title('rec, c={}, z={}'.format(y_pred[i], [ff(zf) for zf in z_latent[i,:]]))
+            ax.set_axis_off()
+        os.makedirs('pics', exist_ok=True)
+        fig.savefig('pics/reconstruction{}.png'.format(img))
+        plt.close()
     print('Reconstruction saved.')
 
 def sample():

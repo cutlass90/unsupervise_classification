@@ -29,6 +29,16 @@ class VAE():
 
         self.sess.run(tf.global_variables_initializer())
         self.saver = tf.train.Saver(max_to_keep=1000)
+    
+    # --------------------------------------------------------------------------
+    def __enter__(self):
+        return self
+
+    # --------------------------------------------------------------------------
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        tf.reset_default_graph()
+        if self.sess is not None:
+            self.sess.close()
 
     # --------------------------------------------------------------------------
     def _create_graph(self):
