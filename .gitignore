@@ -6,3 +6,6 @@ summary/
 models/
 MNIST_data/
 predictions/
+checkpoints/
+data/
+mnist/

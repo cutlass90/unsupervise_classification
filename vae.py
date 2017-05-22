@@ -1,286 +1,262 @@
-import random
-import os
+###
+'''
+Replication of M1 from http://arxiv.org/abs/1406.5298
+Title: Semi-Supervised Learning with Deep Generative Models
+Authors: Diederik P. Kingma, Danilo J. Rezende, Shakir Mohamed, Max Welling
+Original Implementation (Theano): https://github.com/dpkingma/nips14-ssl
+---
+Code By: S. Saemundsson
+'''
+###
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import prettytensor as pt
 import tensorflow as tf
-from tensorflow.contrib import slim
+import utils
+import numpy as np
+import time
 
-import vae_tools as tools
+from neuralnetworks import FullyConnected
+from prettytensor import bookkeeper
 
-class VAE():
-    """A class representing Variational Autoencoder"""
+class VariationalAutoencoder(object):
 
-    def __init__(self, input_dim, n_clusters, z_dim, sampling=True, scope='VAE'):
-        # must z_dim > n_clusters
-        assert z_dim>n_clusters, 'z_dim must be greater than n_clusters'
+	def __init__(   self,
+					dim_x, dim_z,
+					p_x = 'bernoulli',
+					q_z = 'gaussian_marg',
+					p_z = 'gaussian_marg',
+					hidden_layers_px = [600, 600],
+					hidden_layers_qz = [600, 600],
+					nonlin_px = tf.nn.softplus,
+					nonlin_qz = tf.nn.softplus,
+					l2_loss = 0.0   ):
 
-        self.input_dim = input_dim
-        self.z_dim = z_dim
-        self.n_clusters = n_clusters
-        self.activation = tf.nn.relu
-        self.sampling = sampling
-        self.scope = scope
+		self.dim_x, self.dim_z = dim_x, dim_z
+		self.l2_loss = l2_loss
 
-        
-        self._create_graph()
-        os.makedirs('summary', exist_ok=True)
-        sub_d = len(os.listdir('summary'))
-        self.train_writer = tf.summary.FileWriter(logdir = 'summary/'+str(sub_d))
-        self.merged = tf.summary.merge_all()
+		self.distributions = {      'p_x':  p_x,            
+									'q_z':  q_z,            
+									'p_z':  p_z    }
 
-        self.sess.run(tf.global_variables_initializer())
-        self.saver = tf.train.Saver(max_to_keep=1000)
-    
-    # --------------------------------------------------------------------------
-    def __enter__(self):
-        return self
+		''' Create Graph '''
 
-    # --------------------------------------------------------------------------
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        tf.reset_default_graph()
-        if self.sess is not None:
-            self.sess.close()
+		self.G = tf.Graph()
 
-    # --------------------------------------------------------------------------
-    def _create_graph(self):
-        print('Create_graph')
-        self.x,\
-        self.learning_rate,\
-        self.is_training,\
-        self.KL_weight,\
-        self.entropy_weight,\
-        self.m_class_weight = self._input_graph()
+		with self.G.as_default():
 
-        self.z, self.z_mu, self.z_log_sigma, self.clusters = self.encoder(self.x,
-            sampling=self.sampling)
-        tf.summary.histogram('z', self.z[:, self.n_clusters:])
+			self.x = tf.placeholder( tf.float32, [None, self.dim_x] )
 
-        self.logits, self.x_ = self.decoder(self.z)
+			self.encoder = FullyConnected(      dim_output      = 2 * self.dim_z,
+												hidden_layers   = hidden_layers_qz,
+												nonlinearity    = nonlin_qz   )
 
-        self.loss = self.create_cost_graph(logits=self.logits, original=self.x,
-            z_mu=self.z_mu, z_log_sigma=self.z_log_sigma, clusters=self.clusters)
+			self.decoder = FullyConnected(      dim_output      = self.dim_x,
+												hidden_layers   = hidden_layers_px,
+												nonlinearity    = nonlin_px  )
 
-        self.train_step = tf.train.AdamOptimizer(
-                    learning_rate=self.learning_rate).minimize(self.loss)
-        print('Done!')
+			self._objective()
+			self.saver = tf.train.Saver()
+			self.session = tf.Session()
 
-    # --------------------------------------------------------------------------
-    def _input_graph(self):
-        print('\t_input_graph')
+	def _draw_sample( self, mu, log_sigma_sq ):
 
-        x = tf.placeholder(tf.float32, shape=[None, self.input_dim])
-        learning_rate = tf.placeholder(tf.float32, ())
-        is_training = tf.placeholder(tf.bool, ())
-        KL_weight = tf.placeholder(tf.float32, name='KL_weight')
-        entropy_weight = tf.placeholder(tf.float32, name='entropy_weight')
-        m_class_weight = tf.placeholder(tf.float32, name='m_class_weight')
+		epsilon = tf.random_normal( ( tf.shape( mu ) ), 0, 1 )
+		# sample = tf.add( mu, 
+		# 		 tf.mul(  
+		# 		 tf.exp( 0.5 * log_sigma_sq ), epsilon ) )
+		sample = mu + tf.exp(0.5*log_sigma_sq)*epsilon
 
-        return x, learning_rate, is_training, KL_weight, entropy_weight, m_class_weight
+		return sample
 
-    # --------------------------------------------------------------------------
-    def encoder(self, x, sampling=True, reuse=False):
-        print('\tencoder')
+	def _generate_zx( self, x, phase = pt.Phase.train, reuse = False ):
 
-        with tf.variable_scope(self.scope):
-            with tf.variable_scope('encoder', reuse=reuse):
-                x = tf.reshape(x, (-1, 28, 28, 1))
-                regularizer = slim.l2_regularizer(0.001)
-                # encoder
-                net = slim.conv2d(
-                                  x,
-                                  32,
-                                  [3, 3],
-                                  activation_fn=self.activation,
-                                  weights_regularizer=regularizer)
-                net = slim.max_pool2d(net, [2, 2], stride=2)
-                net = slim.batch_norm(
-                                      net,
-                                      scale=True,
-                                      updates_collections=None,
-                                      is_training=self.is_training)
-                net = slim.conv2d(
-                                  net,
-                                  64,
-                                  [3, 3],
-                                  activation_fn=self.activation,
-                                  weights_regularizer=regularizer)
-                net = slim.max_pool2d(net, [2, 2], stride=2)
-                net = slim.flatten(net)
-                net = slim.fully_connected(
-                                            net,
-                                            2 * self.z_dim-self.n_clusters,
-                                            activation_fn=None,
-                                            weights_regularizer=regularizer)
-                #split the layer to mu, sigma and clusters
-                clusters = tf.nn.softmax(net[:, :self.n_clusters])
+		with tf.variable_scope('encoder', reuse = reuse):
+			encoder_out     = self.encoder.output( x, phase = phase )
+		z_mu, z_lsgms   = encoder_out.split( split_dim = 1, num_splits = 2 )
+		z_sample        = self._draw_sample( z_mu, z_lsgms )
 
-                z_mu, z_log_sigma = tf.split(net[:, self.n_clusters:], 2, 1)
+		return z_sample, z_mu, z_lsgms 
+
+	def _generate_xz( self, z, phase = pt.Phase.train, reuse = False ):
+
+		with tf.variable_scope('decoder', reuse = reuse):
+			x_recon_logits = self.decoder.output( z, phase = phase )
+		x_recon = tf.nn.sigmoid( x_recon_logits )
+
+		return x_recon, x_recon_logits
+
+	def _objective( self ):
+
+		############
+		''' Cost '''
+		############
+
+		self.z_sample, self.z_mu, self.z_lsgms = self._generate_zx( self.x )
+		self.x_recon, self.x_recon_logits = self._generate_xz( self.z_sample )
+
+		if self.distributions['p_z'] == 'gaussian_marg':
+
+			prior_z = tf.reduce_sum( utils.tf_gaussian_marg( self.z_mu, self.z_lsgms ), 1 )
+
+		if self.distributions['q_z'] == 'gaussian_marg':
+			
+			post_z = tf.reduce_sum( utils.tf_gaussian_ent( self.z_lsgms ), 1 )
+
+		if self.distributions['p_x'] == 'bernoulli':
+
+			self.log_lik = - tf.reduce_sum( utils.tf_binary_xentropy( self.x, self.x_recon ), 1 )
+
+		l2 = tf.add_n([tf.nn.l2_loss(v) for v in tf.trainable_variables()])
+
+		self.cost = tf.reduce_mean( post_z - prior_z - self.log_lik ) + self.l2_loss * l2
+
+		##################
+		''' Evaluation '''
+		##################
+
+		self.z_sample_eval, _, _ = self._generate_zx( self.x, phase = pt.Phase.test, reuse = True )
+		self.x_recon_eval, _ = self._generate_xz( self.z_sample_eval, phase = pt.Phase.test, reuse = True )
+
+		self.eval_log_lik = - tf.reduce_mean( tf.reduce_sum( utils.tf_binary_xentropy( self.x, self.x_recon_eval ), 1 ) )
 
 
-                if sampling:
-                    z = self.GaussianSample(z_mu, tf.exp(z_log_sigma))
-                else:
-                    z = z_mu
+	def train(      self, x, x_valid,
+					epochs, num_batches,
+					print_every = 1,
+					learning_rate = 3e-4,
+					beta1 = 0.9,
+					beta2 = 0.999,
+					seed = 31415,
+					stop_iter = 100,
+					save_path = None,
+					load_path = None,
+					draw_img = 1    ):
 
-        return tf.concat([clusters, z], 1), z_mu, z_log_sigma, clusters
+		self.num_examples = x.shape[0]
+		self.num_batches = num_batches
 
-    # --------------------------------------------------------------------------
-    def decoder(self, z, reuse=False):
-        print('\tdecoder')
+		assert self.num_examples % self.num_batches == 0, '#Examples % #Batches != 0'
 
-        with tf.variable_scope(self.scope):
-            with tf.variable_scope('decoder', reuse=reuse):
-                regularizer = slim.l2_regularizer(0.001)
+		self.batch_size = self.num_examples // self.num_batches
 
-                net = slim.fully_connected(
-                                           z,
-                                           7 * 7 * 64,
-                                           activation_fn=self.activation,
-                                           weights_regularizer=regularizer)
-                net = tf.reshape(net, (-1, 7, 7, 64))
-                net = slim.conv2d_transpose(
-                                            net,
-                                            32,
-                                            [3, 3],
-                                            stride=2,
-                                            activation_fn=self.activation,
-                                            weights_regularizer=regularizer)
-                net = slim.batch_norm(
-                                      net,
-                                      scale=True,
-                                      updates_collections=None,
-                                      is_training=self.is_training)
-                net = slim.conv2d_transpose(
-                                            net,
-                                            1,
-                                            [3, 3],
-                                            stride=2,
-                                            activation_fn=self.activation,
-                                            weights_regularizer=regularizer)
-                net = slim.flatten(net)
-                logits = slim.fully_connected(
-                                              net,
-                                              self.input_dim,
-                                              activation_fn=None,
-                                              weights_regularizer=regularizer)
+		''' Session and Summary '''
+		if save_path is None: 
+			self.save_path = 'checkpoints/model_VAE_{}-{}_{}.cpkt'.format(learning_rate,self.batch_size,time.time())
+		else:
+			self.save_path = save_path
 
-        return logits, tf.nn.sigmoid(logits)
+		np.random.seed(seed)
+		tf.set_random_seed(seed)
 
-    # --------------------------------------------------------------------------
-    def create_cost_graph(self, logits, original, z_mu, z_log_sigma, clusters):
-        print('\tcreate_cost_graph')
-        self.ce_loss = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(
-          logits=logits, labels=original), 1)
-        self.kl_loss = self.KL_weight*tf.reduce_sum(self.KL(z_mu, tf.exp(z_log_sigma)), 1)
-        self.l2_loss = tf.add_n(tf.losses.get_regularization_losses())
-        self.entropy_loss = self.entropy_weight*self.entropy(clusters, 1) #b
-        self.multiclass_loss = self.m_class_weight*self.entropy(tf.reduce_mean(clusters,0),0)
+		with self.G.as_default():
 
-        
-        tf.summary.histogram('clusters', clusters)
-        tf.summary.histogram('multiclass', tf.reduce_mean(clusters,0))
+			self.optimiser = tf.train.AdamOptimizer( learning_rate = learning_rate, beta1 = beta1, beta2 = beta2 )
+			self.train_op = self.optimiser.minimize( self.cost )
+			init = tf.global_variables_initializer()
+			self._test_vars = None
 
-        tf.summary.scalar('Cross entropy loss', tf.reduce_mean(self.ce_loss))
-        tf.summary.scalar('L2 loss', self.l2_loss)
-        tf.summary.scalar('KL loss', tf.reduce_mean(self.kl_loss))
-        tf.summary.scalar('entropy loss', tf.reduce_mean(self.entropy_loss))
-        tf.summary.scalar('multiclass loss', self.multiclass_loss)
-        return tf.reduce_mean(self.ce_loss + self.kl_loss + self.entropy_loss, 0)\
-            + self.l2_loss - self.multiclass_loss
+		with self.session as sess:
 
-    # --------------------------------------------------------------------------
-    @property
-    def sess(self):
-        if not hasattr(self, '_sess'):
-            config = tf.ConfigProto()
-            config.gpu_options.allow_growth = True
-            self._sess = tf.Session(config=config)
-        return self._sess
+			sess.run(init)
+			if load_path == 'default': self.saver.restore( sess, self.save_path )
+			elif load_path is not None: self.saver.restore( sess, load_path )	
 
-    # --------------------------------------------------------------------------
-    def train(self, batch_size, learning_rate, data_loader, KL_weight,
-        entropy_weight, m_class_weight):
+			training_cost = 0.
+			best_eval_log_lik = - np.inf
+			stop_counter = 0
 
-        for i in range(data_loader.train.num_examples//batch_size):
-            x, _ = data_loader.train.next_batch(batch_size)
-            feed_dict = {
-                         self.x: x,
-                         self.learning_rate: learning_rate,
-                         self.is_training: True,
-                         self.KL_weight: KL_weight,
-                         self.entropy_weight: entropy_weight,
-                         self.m_class_weight: m_class_weight}
-            _, summary = self.sess.run([self.train_step, self.merged],
-                feed_dict=feed_dict)
-            self.train_writer.add_summary(summary, i)
+			for epoch in range(epochs):
+
+				''' Shuffle Data '''
+				np.random.shuffle( x )
+
+				''' Training '''
+				
+				for x_batch in utils.feed_numpy( self.batch_size, x ):
+
+					training_result = sess.run( [self.train_op, self.cost],
+											feed_dict = { self.x: x_batch } )
+
+					training_cost = training_result[1]
+
+				''' Evaluation '''
+
+				stop_counter += 1
+
+				if epoch % print_every == 0:
+
+					test_vars = tf.get_collection(bookkeeper.GraphKeys.TEST_VARIABLES)
+					if test_vars:
+						if test_vars != self._test_vars:
+							self._test_vars = list(test_vars)
+							self._test_var_init_op = tf.initialize_variables(test_vars)
+						self._test_var_init_op.run()
 
 
-    # --------------------------------------------------------------------------
-    def predict(self, data_loader, KL_weight, entropy_weight, m_class_weight):
+					eval_log_lik, x_recon_eval = \
+						sess.run( [self.eval_log_lik, self.x_recon_eval],
+									feed_dict = { self.x: x_valid } )
 
-        x = random.sample(list(data_loader.train.images), 1024)
-        feed_dict = {
-                     self.x: x,
-                     self.is_training: True,
-                     self.KL_weight: KL_weight,
-                     self.entropy_weight: entropy_weight,
-                     self.m_class_weight: m_class_weight}
-        ce, kl, en, mc = self.sess.run([self.ce_loss, self.kl_loss,self.entropy_loss,
-            self.multiclass_loss], feed_dict=feed_dict)        
-        print('Cross-entropy loss: {}, KL loss: {}, entropy loss: {},\
-            multiclass loss: {}'.format(ce.mean(), kl.mean(), en.mean(), mc))
+					if eval_log_lik > best_eval_log_lik:
 
-    # --------------------------------------------------------------------------
-    def get_z(self, x):
-        return self.sess.run(self.z, feed_dict={self.x: x,
-                                                self.is_training: True})
+						best_eval_log_lik = eval_log_lik
+						self.saver.save( sess, self.save_path )
+						stop_counter = 0
 
-    # --------------------------------------------------------------------------
-    def reconstruct(self, x):
-        return self.sess.run(self.x_, feed_dict={self.x: x,
-                                                 self.is_training: True}) 
+					utils.print_metrics( 	epoch+1,
+											['Training', 'cost', training_cost],
+											['Validation', 'log-likelihood', eval_log_lik] )
 
-    # --------------------------------------------------------------------------
-    def reconstruct_from_z(self, z):
-        logits, x = self.sess.run(self.decoder(z, reuse=True), feed_dict={self.is_training: True})
-        return x        
+					if draw_img > 0 and epoch % draw_img == 0:
 
-    # --------------------------------------------------------------------------
-    def save_model(self, path, global_step=None):
-        self.saver.save(self.sess, path, global_step=global_step)
+						import matplotlib
+						matplotlib.use('Agg')
+						import pylab
+						import seaborn as sns
 
-    # --------------------------------------------------------------------------
-    def load_model(self, path):
-        self.saver.restore(self.sess, path)
-        print('Model loaded!')
+						five_random = np.random.random_integers(x_valid.shape[0], size = 5)
+						x_sample = x_valid[five_random]
+						x_recon_sample = x_recon_eval[five_random]
 
-    # --------------------------------------------------------------------------
-    def entropy(self, z, axis):
-        z = tf.clip_by_value(z, 1e-5, 1-1e-5)
-        H = -tf.reduce_sum(z * tf.log(z), axis=axis)
-        return H
+						sns.set_style('white')
+						f, axes = pylab.subplots(5, 2, figsize=(8,12))
+						for i,row in enumerate(axes):
 
-    # --------------------------------------------------------------------------
-    def log10(self, x):
-        numerator = tf.log(x)
-        denominator = tf.log(tf.constant(10, dtype=numerator.dtype))
-        return numerator / denominator
+							row[0].imshow(x_sample[i].reshape(28, 28), vmin=0, vmax=1)
+							im = row[1].imshow(x_recon_sample[i].reshape(28, 28), vmin=0, vmax=1, 
+								cmap=sns.light_palette((1.0, 0.4980, 0.0549), input="rgb", as_cmap=True))
 
-    # --------------------------------------------------------------------------
-    def KL(self, mu, sigma, mu_prior=0.0, sigma_prior=1.0, eps=1e-7):
-        return -(1/2)*(1 + tf.log(eps + (sigma/sigma_prior)**2) \
-            - (sigma**2 + (mu - mu_prior)**2)/sigma_prior**2)
+							pylab.setp([a.get_xticklabels() for a in row], visible=False)
+							pylab.setp([a.get_yticklabels() for a in row], visible=False)
+	
+						f.subplots_adjust(left=0.0, right=0.9, bottom=0.0, top=1.0)
+						cbar_ax = f.add_axes([0.9, 0.1, 0.04, 0.8])
+						f.colorbar(im, cax=cbar_ax, use_gridspec=True)
+		
+						pylab.tight_layout()
+						pylab.savefig('img/recon-'+str(epoch)+'.png', format='png')
+						pylab.clf()
+						pylab.close('all')
 
-    # --------------------------------------------------------------------------
-    def GaussianSample(self, mu, sigma):
-        return mu + sigma*tf.random_normal(tf.shape(mu), dtype=tf.float32)
+				if stop_counter >= stop_iter:
+					print('Stopping VAE training')
+					print('No change in validation log-likelihood for {} iterations'.format(stop_iter))
+					print('Best validation log-likelihood: {}'.format(best_eval_log_lik))
+					print('Model saved in {}'.format(self.save_path))
+					break
 
-################################################################################
-if __name__ == '__main__':
-    vae = VAE(input_dim=28*28,
-        n_clusters=10,
-        z_dim=12)
+	def encode( self, x, sample = False ):
 
-    a = tf.ones([10])
-    print(vae.sess.run(a))
+		if sample:
+			return self.session.run( [self.z_sample, self.z_mu, self.z_lsgms], feed_dict = { self.x: x } )
+		else:
+			return self.session.run( [self.z_mu, self.z_lsgms], feed_dict = { self.x: x } )
 
+	def decode( self, z ):
 
+		return self.session.run( 	[self.x_recon],
+									feed_dict = { self.z_sample: z } )
