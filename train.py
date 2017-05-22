@@ -46,16 +46,13 @@ with VAE(
     sampling=False) as model:
 
     model.load_model(save_path)
-    """
 
     tools.view_z(model)
     tools.plot_clusters_latent_space(model=model, n_clusters=PARAM['n_clusters'])
     tools.plot_clusters(model=model, n_clusters=PARAM['n_clusters'],
         z_dim=PARAM['z_dim'])
 
+
+    tools.reconstruct(model, n_clusters=10, k=5, n_images=10)
     tools.calc_acc(model=model,
     	n_clusters=PARAM['n_clusters'])
-
-    """
-
-    tools.reconstruct(model, n_clusters=10, k=3, n_images=10)

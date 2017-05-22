@@ -185,7 +185,8 @@ def map_labels_to_clusters(labels, clusters):
         for i in range(clusters.shape[1])}
     ls = [v for v in label_map.values()]
     print('label_map', label_map)
-    assert len(set(ls))==clusters.shape[1], 'Can not unequivocally identify all cluster'
+    if len(set(ls))!=clusters.shape[1]:
+        print('!!!!Can not unequivocally identify all cluster')
     return label_map
     
 

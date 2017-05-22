@@ -217,10 +217,10 @@ class VAE():
     # --------------------------------------------------------------------------
     def predict(self, data_loader, KL_weight, entropy_weight, m_class_weight):
 
-        x = random.sample(list(data_loader.validation.images), 64)
+        x = random.sample(list(data_loader.train.images), 1024)
         feed_dict = {
                      self.x: x,
-                     self.is_training: False,
+                     self.is_training: True,
                      self.KL_weight: KL_weight,
                      self.entropy_weight: entropy_weight,
                      self.m_class_weight: m_class_weight}
