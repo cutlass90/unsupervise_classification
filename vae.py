@@ -19,7 +19,7 @@ import utils
 import numpy as np
 import time
 
-from neuralnetworks import FullyConnected
+# from neuralnetworks import FullyConnected
 from prettytensor import bookkeeper
 
 class VariationalAutoencoder(object):
@@ -50,13 +50,13 @@ class VariationalAutoencoder(object):
 
 			self.x = tf.placeholder( tf.float32, [None, self.dim_x] )
 
-			self.encoder = FullyConnected(      dim_output      = 2 * self.dim_z,
-												hidden_layers   = hidden_layers_qz,
-												nonlinearity    = nonlin_qz   )
+			# self.encoder = FullyConnected(      dim_output      = 2 * self.dim_z,
+			# 									hidden_layers   = hidden_layers_qz,
+			# 									nonlinearity    = nonlin_qz   )
 
-			self.decoder = FullyConnected(      dim_output      = self.dim_x,
-												hidden_layers   = hidden_layers_px,
-												nonlinearity    = nonlin_px  )
+			# self.decoder = FullyConnected(      dim_output      = self.dim_x,
+			# 									hidden_layers   = hidden_layers_px,
+			# 									nonlinearity    = nonlin_px  )
 
 			self._objective()
 			self.saver = tf.train.Saver()
@@ -75,8 +75,9 @@ class VariationalAutoencoder(object):
 	def _generate_zx( self, x, phase = pt.Phase.train, reuse = False ):
 
 		with tf.variable_scope('encoder', reuse = reuse):
-			encoder_out     = self.encoder.output( x, phase = phase )
-		z_mu, z_lsgms   = encoder_out.split( split_dim = 1, num_splits = 2 )
+			encoder_out     = self.encoder(inputs=x, hidden_layers=[600, 600],
+				dim_output=2*self.dim_z, nonlinearity=tf.nn.softplus, reuse=reuse)
+		z_mu, z_lsgms   = tf.split(encoder_out, 2, axis=1)
 		z_sample        = self._draw_sample( z_mu, z_lsgms )
 
 		return z_sample, z_mu, z_lsgms 
@@ -84,7 +85,8 @@ class VariationalAutoencoder(object):
 	def _generate_xz( self, z, phase = pt.Phase.train, reuse = False ):
 
 		with tf.variable_scope('decoder', reuse = reuse):
-			x_recon_logits = self.decoder.output( z, phase = phase )
+			x_recon_logits = self.decoder(inputs=z, hidden_layers=[600, 600],
+				dim_output=self.dim_x, nonlinearity=tf.nn.softplus, reuse=reuse)
 		x_recon = tf.nn.sigmoid( x_recon_logits )
 
 		return x_recon, x_recon_logits
@@ -260,3 +262,44 @@ class VariationalAutoencoder(object):
 
 		return self.session.run( 	[self.x_recon],
 									feed_dict = { self.z_sample: z } )
+
+	def encoder(self, inputs, hidden_layers, dim_output, nonlinearity, reuse):
+		""" Create encoder graph
+
+		Args:
+			hidden_layers: list of integers specifies sizes of hidden layers
+		"""
+		with tf.variable_scope('encoder'):
+			for l in hidden_layers:	
+				inputs = tf.layers.dense(
+					inputs=inputs,
+					units=l,
+					activation=nonlinearity,
+					reuse=reuse)
+			out = tf.layers.dense(
+					inputs=inputs,
+					units=dim_output,
+					activation=None,
+					reuse=reuse)
+			return out
+	
+
+	def decoder(self, inputs, hidden_layers, dim_output, nonlinearity, reuse):
+		""" Create decoder graph
+
+		Args:
+			hidden_layers: list of integers specifies sizes of hidden layers
+		"""
+		with tf.variable_scope('decoder'):
+			for l in hidden_layers:	
+				inputs = tf.layers.dense(
+					inputs=inputs,
+					units=l,
+					activation=nonlinearity,
+					reuse=reuse)
+			out = tf.layers.dense(
+					inputs=inputs,
+					units=dim_output,
+					activation=None,
+					reuse=reuse)
+			return out

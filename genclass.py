@@ -19,7 +19,7 @@ import numpy as np
 import utils
 import time
 
-from neuralnetworks import FullyConnected
+# from neuralnetworks import FullyConnected
 from prettytensor import bookkeeper
 
 class GenerativeClassifier( object ):
@@ -74,20 +74,20 @@ class GenerativeClassifier( object ):
 			self.x_unlabelled_lsgms 	= tf.placeholder( tf.float32, [None, self.dim_x] )
 			self.y_lab      			= tf.placeholder( tf.float32, [None, self.dim_y] )
 
-			self.classifier = FullyConnected( 	dim_output 		= self.dim_y, 
-												hidden_layers 	= hidden_layers_qy,
-												nonlinearity 	= nonlin_qy,
-												l2loss 			= l2_loss 	)
+			# self.classifier = FullyConnected( 	dim_output 		= self.dim_y, 
+			# 									hidden_layers 	= hidden_layers_qy,
+			# 									nonlinearity 	= nonlin_qy,
+			# 									l2loss 			= l2_loss 	)
 
-			self.encoder = FullyConnected( 		dim_output 		= 2 * self.dim_z,
-												hidden_layers 	= hidden_layers_qz,
-												nonlinearity 	= nonlin_qz,
-												l2loss 			= l2_loss 	)
+			# self.encoder = FullyConnected( 		dim_output 		= 2 * self.dim_z,
+			# 									hidden_layers 	= hidden_layers_qz,
+			# 									nonlinearity 	= nonlin_qz,
+			# 									l2loss 			= l2_loss 	)
 
-			self.decoder = FullyConnected( 		dim_output 		= 2 * self.dim_x,
-												hidden_layers 	= hidden_layers_px,
-												nonlinearity 	= nonlin_px,
-												l2loss 			= l2_loss 	)
+			# self.decoder = FullyConnected( 		dim_output 		= 2 * self.dim_x,
+			# 									hidden_layers 	= hidden_layers_px,
+			# 									nonlinearity 	= nonlin_px,
+			# 									l2loss 			= l2_loss 	)
 
 			self._objective()
 			self.saver = tf.train.Saver()
@@ -109,15 +109,17 @@ class GenerativeClassifier( object ):
 
 		x_sample = self._draw_sample( x_mu, x_log_sigma_sq )
 		with tf.variable_scope('classifier', reuse = reuse):
-			y_logits = self.classifier.output( x_sample, phase )
+			y_logits = self.classifier(inputs=x_sample, hidden_layers=[500],
+				dim_output=self.dim_y, nonlinearity=tf.nn.softplus, reuse=reuse)
 
 		return y_logits, x_sample
 
 	def _generate_zxy( self, x, y, reuse = False ):
 
 		with tf.variable_scope('encoder', reuse = reuse):
-			encoder_out = self.encoder.output( tf.concat([x, y], axis=1))
-		z_mu, z_lsgms   = encoder_out.split( split_dim = 1, num_splits = 2 )
+			encoder_out = self.encoder(inputs=tf.concat([x, y], axis=1), hidden_layers=[500],
+				dim_output=2*self.dim_z, nonlinearity=tf.nn.softplus, reuse=reuse)
+		z_mu, z_lsgms   = tf.split(encoder_out, 2, axis=1)
 		z_sample        = self._draw_sample( z_mu, z_lsgms )
 
 		return z_sample, z_mu, z_lsgms 
@@ -125,8 +127,9 @@ class GenerativeClassifier( object ):
 	def _generate_xzy( self, z, y, reuse = False ):
 
 		with tf.variable_scope('decoder', reuse = reuse):
-			decoder_out = self.decoder.output( tf.concat([z, y], axis=1) )
-		x_recon_mu, x_recon_lsgms   = decoder_out.split( split_dim = 1, num_splits = 2 )
+			decoder_out = self.decoder(inputs=tf.concat([z, y], axis=1), hidden_layers=[500],
+				dim_output=2*self.dim_x, nonlinearity=tf.nn.softplus, reuse=reuse)
+		x_recon_mu, x_recon_lsgms   = tf.split(decoder_out, 2, axis=1)
 
 		return x_recon_mu, x_recon_lsgms
 
@@ -211,7 +214,7 @@ class GenerativeClassifier( object ):
 			if label == 0: L_ulab = tf.identity( _L_ulab )
 			else: L_ulab = tf.concat([L_ulab, _L_ulab], axis=1)
 
-		self.y_ulab = self.y_ulab_logits.softmax_activation()
+		self.y_ulab = tf.nn.softmax(self.y_ulab_logits)
 
 		U = tf.reduce_sum(self.y_ulab*(L_ulab-tf.log(self.y_ulab)), 1)
 
@@ -240,6 +243,7 @@ class GenerativeClassifier( object ):
 
 		self.y_test_logits, _ = self._generate_yx( self.x_labelled_mu, self.x_labelled_lsgms, 
 			phase = pt.Phase.test, reuse = True )
+		self.y_test_logits = pt.wrap(self.y_test_logits)
 		self.y_test_pred = self.y_test_logits.softmax( self.y_lab )
 
 		self.eval_accuracy = self.y_test_pred\
@@ -369,3 +373,63 @@ class GenerativeClassifier( object ):
 								['Test', 'cross-entropy', cross_entropy],
 								['Test', 'precision', precision],
 								['Test', 'recall', recall] )
+
+
+	def encoder(self, inputs, hidden_layers, dim_output, nonlinearity, reuse):
+		""" Create encoder graph
+
+		Args:
+			hidden_layers: list of integers specifies sizes of hidden layers
+		"""
+		for l in hidden_layers:	
+			inputs = tf.layers.dense(
+				inputs=inputs,
+				units=l,
+				activation=nonlinearity,
+				reuse=reuse)
+		out = tf.layers.dense(
+				inputs=inputs,
+				units=dim_output,
+				activation=None,
+				reuse=reuse)
+		return out
+	
+
+	def decoder(self, inputs, hidden_layers, dim_output, nonlinearity, reuse):
+		""" Create decoder graph
+
+		Args:
+			hidden_layers: list of integers specifies sizes of hidden layers
+		"""
+		for l in hidden_layers:	
+			inputs = tf.layers.dense(
+				inputs=inputs,
+				units=l,
+				activation=nonlinearity,
+				reuse=reuse)
+		out = tf.layers.dense(
+				inputs=inputs,
+				units=dim_output,
+				activation=None,
+				reuse=reuse)
+		return out
+
+
+	def classifier(self, inputs, hidden_layers, dim_output, nonlinearity, reuse):
+		""" Create classifier graph
+
+		Args:
+			hidden_layers: list of integers specifies sizes of hidden layers
+		"""
+		for l in hidden_layers:	
+			inputs = tf.layers.dense(
+				inputs=inputs,
+				units=l,
+				activation=nonlinearity,
+				reuse=reuse)
+		out = tf.layers.dense(
+				inputs=inputs,
+				units=dim_output,
+				activation=None,
+				reuse=reuse)
+		return out

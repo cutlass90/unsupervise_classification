@@ -36,7 +36,7 @@ if __name__ == '__main__':
 
     num_lab = 100           #Number of labelled examples (total)
     num_batches = 100       #Number of minibatches in a single epoch
-    dim_z = 50              #Dimensionality of latent variable (z)
+    dim_z = 20              #Dimensionality of latent variable (z)
     epochs = 1001           #Number of epochs through the full dataset
     learning_rate = 3e-4    #Learning rate of ADAM
     alpha = 0.1             #Discriminatory factor (see equation (9) of http://arxiv.org/pdf/1406.5298v2.pdf)
@@ -65,7 +65,7 @@ if __name__ == '__main__':
     ''' Load VAE '''
     ################
 
-    VAE_model_path = 'models/VAE_600-600-0.0003-50.cpkt'
+    VAE_model_path = 'models/model_VAE_0.0003-50_1495460995.835407.cpkt'
     min_std = 0.1 #Dimensions with std < min_std are removed before training with GC
 
     data_lab, data_ulab, data_valid, data_test = encode_dataset( VAE_model_path, min_std )
