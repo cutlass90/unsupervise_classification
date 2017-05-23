@@ -28,6 +28,11 @@ def encode_dataset( model_path, min_std = 0.0 ):
 
     return data_lab, data_ulab, data_valid, data_test
 
+def change_targets(target_arr, number):
+    return np.stack([(target_arr[:,number]>0.5).astype(float),
+        (target_arr[:,number]<0.5).astype(float)], 1)
+
+
 if __name__ == '__main__':
     
     #############################
@@ -56,11 +61,16 @@ if __name__ == '__main__':
     train_x, train_y, valid_x, valid_y, test_x, test_y = mnist.load_numpy_split(mnist_path, binarize_y=True) 
     x_l, y_l, x_u, y_u = mnist.create_semisupervised(train_x, train_y, num_lab)
 
+
     x_lab, y_lab = x_l.T, y_l.T
     x_ulab, y_ulab = x_u.T, y_u.T
     x_valid, y_valid = valid_x.T, valid_y.T
     x_test, y_test = test_x.T, test_y.T
-
+    y_lab = change_targets(y_lab, 0)
+    y_ulab = change_targets(y_ulab, 0)
+    y_valid = change_targets(y_valid, 0)
+    y_test = change_targets(y_test, 0)
+    
     ################
     ''' Load VAE '''
     ################
@@ -103,3 +113,4 @@ if __name__ == '__main__':
     with GC_eval.session:
         GC_eval.saver.restore( GC_eval.session, GC.save_path )
         GC_eval.predict_labels( data_test, y_test )
+    
