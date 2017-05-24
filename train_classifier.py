@@ -66,16 +66,16 @@ if __name__ == '__main__':
     x_ulab, y_ulab = x_u.T, y_u.T
     x_valid, y_valid = valid_x.T, valid_y.T
     x_test, y_test = test_x.T, test_y.T
-    y_lab = change_targets(y_lab, 0)
-    y_ulab = change_targets(y_ulab, 0)
-    y_valid = change_targets(y_valid, 0)
-    y_test = change_targets(y_test, 0)
+    # y_lab = change_targets(y_lab, 0)
+    # y_ulab = change_targets(y_ulab, 0)
+    # y_valid = change_targets(y_valid, 0)
+    # y_test = change_targets(y_test, 0)
     
     ################
     ''' Load VAE '''
     ################
 
-    VAE_model_path = 'models/model_VAE_0.0003-50_1495460995.835407.cpkt'
+    VAE_model_path = 'models/model_VAE_0.0003-50_1495623239.6262398.cpkt'
     min_std = 0.1 #Dimensions with std < min_std are removed before training with GC
 
     data_lab, data_ulab, data_valid, data_test = encode_dataset( VAE_model_path, min_std )
